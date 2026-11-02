@@ -24,7 +24,7 @@ npm run db:seed      # carga usuarios y posts de ejemplo
 npm run dev          # levanta el servidor con recarga automática
 ```
 
-La API queda disponible en `[http://localhost:3000/api-backend](https://backend-react-fcsl.onrender.com/api-backend)`.
+La API queda disponible en `https://backend-react-fcsl.onrender.com/api-backend`.
 
 Las migraciones se aplican automáticamente al arrancar el servidor.
 
@@ -93,7 +93,7 @@ src/
 
 ```js
 // 1. Login: guardar el token
-const res = await fetch('[http://localhost:3000/api-backend](https://backend-react-fcsl.onrender.com/api-backend)/auth/login', {
+const res = await fetch('https://backend-react-fcsl.onrender.com/api-backend/auth/login', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ email: 'docente@cft.cl', password: '123456' }),
@@ -102,7 +102,7 @@ const { token, user } = await res.json();
 localStorage.setItem('token', token);
 
 // 2. Usar el token en endpoints protegidos
-const posts = await fetch('http://localhost:3000/api-backend/posts', {
+const posts = await fetch('https://backend-react-fcsl.onrender.com/api-backend/posts', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',

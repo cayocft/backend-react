@@ -12,7 +12,7 @@ Esta es la guía para consumir el backend desde tu frontend.
 
 > Todas las rutas de esta documentación van **después** del prefijo
 > `/api-backend`. Por ejemplo, el endpoint `/auth/login` se consume en
-> `http://localhost:3000/api-backend/auth/login`.
+> `https://backend-react-fcsl.onrender.com/api-backend/auth/login`.
 
 ## Cómo levantar el servidor
 
@@ -25,7 +25,7 @@ npm run dev
 Cuando está listo verás en consola:
 
 ```
-API lista en http://localhost:3000/api-backend
+API lista en https://backend-react-fcsl.onrender.com/api-backend
 ```
 
 ### Usuarios de prueba
@@ -361,7 +361,7 @@ campo y su mensaje, y `details` trae el desglose estructurado por campo:
 ### Flujo completo: login → guardar token → crear post
 
 ```js
-const API = 'http://localhost:3000/api-backend';
+const API = 'https://backend-react-fcsl.onrender.com/api-backend';
 
 // 1. Login
 const loginRes = await fetch(`${API}/auth/login`, {
@@ -396,12 +396,12 @@ console.log(posts);
 
 ```bash
 # Login
-curl -X POST http://localhost:3000/api-backend/auth/login \
+curl -X POST https://backend-react-fcsl.onrender.com/api-backend/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"docente@cft.cl","password":"123456"}'
 
 # Crear post con token
-curl -X POST http://localhost:3000/api-backend/posts \
+curl -X POST https://backend-react-fcsl.onrender.com/api-backend/posts \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer TU_TOKEN_AQUI" \
   -d '{"title":"Hola","content":"Mi primer post"}'

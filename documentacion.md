@@ -6,7 +6,7 @@ Esta es la guía para consumir el backend desde tu frontend.
 
 | Dato | Valor |
 | --- | --- |
-| **URL base** | `http://localhost:3000/api-backend` |
+| **URL base** | `https://backend-react-fcsl.onrender.com/api-backend` |
 | **Formato** | JSON (`Content-Type: application/json`) |
 | **Autenticación** | Token JWT en el header `Authorization: Bearer <token>` |
 

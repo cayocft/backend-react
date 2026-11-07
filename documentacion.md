@@ -50,8 +50,18 @@ API lista en https://backend-react-fcsl.onrender.com/api-backend
 | POST | `/posts` | Sí | Crear un post |
 | PUT | `/posts/:id` | Sí | Editar un post (solo el autor) |
 | DELETE | `/posts/:id` | Sí | Eliminar un post (solo el autor) |
+| GET | `/posts/:postId/reactions` | No | Ver reacciones de un post |
+| POST | `/posts/:postId/reactions` | No | Reaccionar a un post |
+| DELETE | `/reactions/:id` | No | Quitar una reacción |
+| GET | `/posts/:postId/comments` | No | Ver comentarios de un post |
+| POST | `/posts/:postId/comments` | No | Comentar un post |
+| DELETE | `/comments/:id` | No | Eliminar un comentario |
 | GET | `/users` | No | Listar usuarios |
 | GET | `/users/:id` | No | Usuario con sus posts |
+
+> **Reacciones y comentarios no piden token** (por ahora). Si quien
+> reacciona/comenta inició sesión, tu frontend envía `"userId": <id del usuario>`
+> en el body. Si no envías `userId`, el registro queda como **anónimo**.
 
 ---
 
@@ -152,6 +162,8 @@ Inicia sesión y devuelve el token. **No requiere token.**
 
 Devuelve los datos del usuario dueño del token. **Requiere token.**
 
+**Headers:** `Authorization: Bearer <token>`
+
 **Respuesta `200 OK`:**
 
 ```json
@@ -187,11 +199,16 @@ Lista todos los posts con los datos públicos de su autor. **No requiere token.*
       "title": "Primer post de Docente",
       "content": "Este es un post de ejemplo creado por el seed.",
       "createdAt": "2026-10-28T03:15:59.622Z",
-      "author": { "id": 1, "name": "Docente" }
+      "author": { "id": 1, "name": "Docente" },
+      "reactions": { "like": 2, "love": 1 },
+      "commentsCount": 3
     }
   ]
 }
 ```
+
+> Cada post trae `reactions` (conteo por tipo) y `commentsCount` (total de
+> comentarios), así puedes mostrar los contadores sin hacer más peticiones.
 
 ### GET `/posts/:id`
 
@@ -265,6 +282,213 @@ Elimina un post. **Requiere token y solo el autor puede eliminarlo.**
 **Respuesta:** `204 No Content` (sin body).
 
 **Errores posibles:** 401, 403, 404 (igual que PUT).
+
+---
+
+## Reacciones
+
+Los usuarios pueden reaccionar a cualquier post (incluidos los propios).
+**No requieren token**: si quien reacciona inició sesión, tu frontend envía
+`"userId": <id>` en el body; si no, la reacción queda **anónima**.
+
+### Tipos de reacción disponibles
+
+| `type` | Significado | Emoji sugerido |
+| --- | --- | --- |
+| `like` | Me gusta | 👍 |
+| `love` | Me encanta / me emociona | ❤️ |
+| `haha` | Me divierte | 😂 |
+| `wow` | Me sorprende | 😮 |
+| `sad` | Me entristece | 😢 |
+| `angry` | Me enoja | 😡 |
+
+Cualquier otro valor es rechazado con un `400`.
+
+### Reglas
+
+- Un usuario registrado **no puede repetir el mismo tipo** en el mismo post
+  (el servidor responde `409`), pero sí puede usar tipos distintos
+  (`like` + `sad`, por ejemplo).
+- El autor de un post **sí puede** reaccionar a su propia publicación.
+- Las reacciones anónimas no tienen límite: sin sesión no hay forma de
+  identificar a quien las envía.
+- Para "quitar" una reacción guarda el `id` que devuelve el POST y luego
+  llama a `DELETE /reactions/:id`.
+
+### GET `/posts/:postId/reactions`
+
+Devuelve el conteo por tipo y el detalle de cada reacción. **No requiere token.**
+
+**Respuesta `200 OK`:**
+
+```json
+{
+  "counts": { "like": 2, "love": 1, "wow": 1 },
+  "reactions": [
+    {
+      "id": 1,
+      "type": "like",
+      "createdAt": "2026-11-07T01:03:42.355Z",
+      "user": { "id": 1, "name": "Docente" }
+    },
+    {
+      "id": 2,
+      "type": "love",
+      "createdAt": "2026-11-07T01:03:42.355Z",
+      "user": null
+    }
+  ]
+}
+```
+
+> `user: null` → reacción **anónima**. En tu interfaz puedes mostrar
+> "Anónimo" en ese caso.
+>
+> Para pintar solo los contadores usa `counts`. El detalle sirve si quieres
+> mostrar quién reaccionó.
+
+**Errores posibles:** 400 si el ID no es numérico, 404 si el post no existe.
+
+### POST `/posts/:postId/reactions`
+
+Crea una reacción. **No requiere token.**
+
+**Body:**
+
+```json
+{
+  "type": "like",
+  "userId": 1
+}
+```
+
+- `type` → obligatorio, uno de la tabla de arriba.
+- `userId` → **opcional**. Envíalo solo si el usuario inició sesión.
+  Si no va, la reacción es anónima.
+
+**Respuesta `201 Created`:**
+
+```json
+{
+  "reaction": {
+    "id": 8,
+    "postId": 1,
+    "type": "love",
+    "userId": 1,
+    "createdAt": "2026-11-07T01:07:08.217Z"
+  },
+  "counts": { "like": 2, "love": 2, "wow": 1 }
+}
+```
+
+> La respuesta incluye `counts` ya actualizado, para refrescar los
+> contadores sin hacer otra petición. Guarda `reaction.id` por si luego
+> quieres quitarla con `DELETE`.
+
+**Errores posibles:**
+
+| Código | Caso | Respuesta |
+| --- | --- | --- |
+| 400 | `type` inválido | `{"error": "type: El tipo debe ser uno de: like, love, haha, wow, sad, angry", "details": [...]}` |
+| 400 | `userId` no existe | `{"error": "El userId no corresponde a un usuario existente"}` |
+| 404 | El post no existe | `{"error": "Post no encontrado"}` |
+| 409 | Mismo usuario + mismo tipo | `{"error": "Ya reaccionaste a este post con este tipo"}` |
+
+### DELETE `/reactions/:id`
+
+Quita una reacción por su `id`. **No requiere token.**
+
+**Respuesta:** `204 No Content` (sin body).
+
+**Errores posibles:** 400 si el ID no es numérico, 404 si no existe.
+
+> Por ahora cualquiera puede eliminar cualquier reacción. Cuando se agregue
+> el uso de token, este endpoint se restringirá al dueño de la reacción.
+
+---
+
+## Comentarios
+
+Respuestas de texto a un post. **Tampoco requieren token**: con `userId`
+en el body el comentario muestra su autor; sin `userId` queda **anónimo**.
+
+### GET `/posts/:postId/comments`
+
+Lista los comentarios del post. **No requiere token.**
+
+**Respuesta `200 OK`:**
+
+```json
+{
+  "comments": [
+    {
+      "id": 1,
+      "content": "¡Buen post!",
+      "createdAt": "2026-11-07T01:03:42.361Z",
+      "author": { "id": 1, "name": "Docente" }
+    },
+    {
+      "id": 2,
+      "content": "Comentario dejado por alguien anónimo.",
+      "createdAt": "2026-11-07T01:03:42.361Z",
+      "author": null
+    }
+  ]
+}
+```
+
+> `author: null` → comentario **anónimo**. En tu interfaz muestra
+> "Anónimo" cuando `author` sea `null`.
+
+**Errores posibles:** 400 si el ID no es numérico, 404 si el post no existe.
+
+### POST `/posts/:postId/comments`
+
+Crea un comentario. **No requiere token.**
+
+**Body:**
+
+```json
+{
+  "content": "Mi comentario",
+  "userId": 1
+}
+```
+
+- `content` → obligatorio, entre 1 y 500 caracteres.
+- `userId` → **opcional**. Si no va, el comentario es anónimo.
+
+**Respuesta `201 Created`:**
+
+```json
+{
+  "comment": {
+    "id": 5,
+    "content": "Mi comentario",
+    "createdAt": "2026-11-07T01:09:59.773Z",
+    "author": { "id": 1, "name": "Docente" }
+  }
+}
+```
+
+**Errores posibles:**
+
+| Código | Caso | Respuesta |
+| --- | --- | --- |
+| 400 | `content` vacío o muy largo | `{"error": "content: ...", "details": [...]}` |
+| 400 | `userId` no existe | `{"error": "El userId no corresponde a un usuario existente"}` |
+| 404 | El post no existe | `{"error": "Post no encontrado"}` |
+
+### DELETE `/comments/:id`
+
+Elimina un comentario por su `id`. **No requiere token.**
+
+**Respuesta:** `204 No Content` (sin body).
+
+**Errores posibles:** 400 si el ID no es numérico, 404 si no existe.
+
+> Al igual que las reacciones, por ahora cualquiera puede eliminar
+> comentarios. Se restringirá al agregar autenticación con token.
 
 ---
 
@@ -351,7 +575,7 @@ campo y su mensaje, y `details` trae el desglose estructurado por campo:
 | 401 | Falta el token, o está vencido/alterado |
 | 403 | Tienes token, pero no eres dueño del recurso |
 | 404 | La ruta o el recurso no existe |
-| 409 | Conflicto: el email ya está registrado |
+| 409 | Conflicto: email/RUT ya registrado, o reacción repetida |
 | 500 | Error interno del servidor |
 
 ---
@@ -390,6 +614,37 @@ const { post } = await postRes.json();
 const res = await fetch(`${API}/posts`);
 const { posts } = await res.json();
 console.log(posts);
+```
+
+### Reaccionar a un post (con y sin sesión)
+
+```js
+// Usuario logueado: guarda su id al hacer login (login.user.id)
+const userId = JSON.parse(localStorage.getItem('user'))?.id;
+
+const res = await fetch(`${API}/posts/1/reactions`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ type: 'like', userId }), // userId: undefined → anónimo
+});
+const { reaction, counts } = await res.json();
+
+// Para quitar la reacción más tarde:
+await fetch(`${API}/reactions/${reaction.id}`, { method: 'DELETE' });
+```
+
+### Comentar un post
+
+```js
+const res = await fetch(`${API}/posts/1/comments`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ content: 'Mi comentario', userId }),
+});
+const { comment } = await res.json();
+
+// Mostrar autor o "Anónimo":
+console.log(comment.author?.name ?? 'Anónimo');
 ```
 
 ### Ejemplo con `curl`

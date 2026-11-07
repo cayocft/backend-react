@@ -1,0 +1,12 @@
+import { z } from 'zod';
+
+// Tipos de reacción que acepta la API. Cualquier otro valor
+// es rechazado con un 400 explicando las opciones válidas.
+export const REACTION_TYPES = ['like', 'love', 'haha', 'wow', 'sad', 'angry'];
+
+export const createReactionSchema = z.object({
+  type: z.enum(REACTION_TYPES, `El tipo debe ser uno de: ${REACTION_TYPES.join(', ')}`),
+  // Opcional: id del usuario que reacciona.
+  // Si no se envía, la reacción se guarda como anónima.
+  userId: z.number().int('El userId debe ser un número entero').positive('El userId debe ser positivo').optional(),
+});

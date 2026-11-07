@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
 import { db, runMigrations } from './index.js';
-import { posts, users } from './schema.js';
+import { comments, posts, reactions, users } from './schema.js';
 
 // Datos de ejemplo para que los estudiantes tengan contenido
 // disponible apenas levanten el proyecto.
@@ -32,9 +32,26 @@ for (const data of demoUsers) {
     })
     .returning();
 
-  await db.insert(posts).values([
-    { title: `Primer post de ${user.name}`, content: 'Este es un post de ejemplo creado por el seed.', authorId: user.id },
-    { title: 'Aprendiendo APIs REST', content: 'Consumiendo el backend desde mi frontend.', authorId: user.id },
+  const createdPosts = await db
+    .insert(posts)
+    .values([
+      { title: `Primer post de ${user.name}`, content: 'Este es un post de ejemplo creado por el seed.', authorId: user.id },
+      { title: 'Aprendiendo APIs REST', content: 'Consumiendo el backend desde mi frontend.', authorId: user.id },
+    ])
+    .returning();
+
+  // Reacciones y comentarios de ejemplo sobre el primer post:
+  // algunos con userId (usuario) y otros sin userId (anónimos).
+  const firstPost = createdPosts[0];
+  await db.insert(reactions).values([
+    { postId: firstPost.id, type: 'like', userId: user.id },
+    { postId: firstPost.id, type: 'love' },
+    { postId: firstPost.id, type: 'wow' },
+  ]);
+
+  await db.insert(comments).values([
+    { postId: firstPost.id, content: '¡Buen post!', userId: user.id },
+    { postId: firstPost.id, content: 'Comentario dejado por alguien anónimo.' },
   ]);
 
   console.log(`Creado: ${data.email} / password: ${data.password}`);

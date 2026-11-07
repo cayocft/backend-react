@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { count, eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { posts, users } from '../db/schema.js';
+import { comments, posts, reactions, users } from '../db/schema.js';
 
 // Consulta base: posts con los datos públicos de su autor (JOIN).
 const postWithAuthor = () =>
@@ -20,10 +20,34 @@ const parseId = (value) => {
   return Number.isInteger(id) && id > 0 ? id : null;
 };
 
+// Agrega a cada post el conteo de reacciones por tipo
+// (reactions: { like: 3 }) y el total de comentarios (commentsCount),
+// con una sola consulta agrupada por tabla en vez de una por post.
+async function withCounts(postList) {
+  const [reactionRows, commentRows] = await Promise.all([
+    db
+      .select({ postId: reactions.postId, type: reactions.type, total: count() })
+      .from(reactions)
+      .groupBy(reactions.postId, reactions.type),
+    db
+      .select({ postId: comments.postId, total: count() })
+      .from(comments)
+      .groupBy(comments.postId),
+  ]);
+
+  return postList.map((post) => ({
+    ...post,
+    reactions: reactionRows
+      .filter((row) => row.postId === post.id)
+      .reduce((acc, row) => ({ ...acc, [row.type]: row.total }), {}),
+    commentsCount: commentRows.find((row) => row.postId === post.id)?.total ?? 0,
+  }));
+}
+
 // GET /api/posts  (público)
 export async function listPosts(req, res) {
   const result = await postWithAuthor();
-  res.json({ posts: result });
+  res.json({ posts: await withCounts(result) });
 }
 
 // GET /api/posts/:id  (público)
@@ -34,7 +58,8 @@ export async function getPost(req, res) {
   const [post] = await postWithAuthor().where(eq(posts.id, id));
   if (!post) return res.status(404).json({ error: 'Post no encontrado' });
 
-  res.json({ post });
+  const [postWithCounts] = await withCounts([post]);
+  res.json({ post: postWithCounts });
 }
 
 // POST /api/posts  (requiere token)

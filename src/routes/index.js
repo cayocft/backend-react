@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { authRouter } from './auth.routes.js';
+import { commentRouter } from './comment.routes.js';
 import { postRouter } from './post.routes.js';
+import { reactionRouter } from './reaction.routes.js';
 import { userRouter } from './user.routes.js';
 
 // Router raíz: agrupa todos los recursos de la API.
@@ -11,3 +13,5 @@ export const router = Router();
 router.use('/auth', authRouter);
 router.use('/users', userRouter);
 router.use('/posts', postRouter);
+router.use('/reactions', reactionRouter);
+router.use('/comments', commentRouter);

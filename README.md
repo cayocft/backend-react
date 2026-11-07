@@ -1,5 +1,9 @@
 # Backend CFT — API de ejemplo para clases
 
+[![📖 DOCUMENTACIÓN COMPLETA DE LA API](https://img.shields.io/badge/📖_DOCUMENTACIÓN_COMPLETA_DE_LA_API-documentacion.md-0a7ea4?style=for-the-badge)](documentacion.md)
+
+> 👆 **Toda la referencia de endpoints, ejemplos de uso y errores está en [`documentacion.md`](documentacion.md).**
+
 API REST construida con **Express 5 + Mongoose + MongoDB Atlas + JWT**, pensada para que los estudiantes la consuman desde sus propios frontends.
 
 Incluye:

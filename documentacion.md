@@ -223,7 +223,7 @@ Lista todos los posts con los datos públicos de su autor. **No requiere token.*
 Obtiene un post por su ID **con todo incluido**: autor, conteos, el detalle
 de comentarios y el detalle de reacciones. **No requiere token.**
 
-Ejemplo: `GET http://localhost:3000/api-backend/posts/507f191e810c19729de860ea`
+Ejemplo: `GET https://backend-react-fcsl.onrender.com/api-backend/posts/507f191e810c19729de860ea`
 
 **Respuesta `200 OK`:**
 

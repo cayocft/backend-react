@@ -8,9 +8,15 @@ export function notFound(req, res) {
 export function errorHandler(err, req, res, _next) {
   console.error(err);
 
-  // Error típico de SQLite al violar una restricción UNIQUE
-  if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || /UNIQUE constraint/.test(err.message ?? '')) {
-    return res.status(409).json({ error: 'Ya existe un registro con ese dato único' });
+  // Error de MongoDB/Mongoose al violar un índice único (email, rut)
+  if (err.code === 11000) {
+    const field = Object.keys(err.keyValue ?? {})[0] ?? 'dato único';
+    return res.status(409).json({ error: `Ya existe un registro con ese ${field}` });
+  }
+
+  // Error de Mongoose al castear un ObjectId con formato inválido
+  if (err.name === 'CastError') {
+    return res.status(400).json({ error: 'ID o formato de dato inválido' });
   }
 
   res.status(500).json({ error: 'Error interno del servidor' });

@@ -5,7 +5,10 @@ export const createCommentSchema = z.object({
     .string()
     .min(1, 'El comentario no puede estar vacío')
     .max(500, 'El comentario no puede superar los 500 caracteres'),
-  // Opcional: id del usuario que comenta.
+  // Opcional: id del usuario que comenta (ObjectId de MongoDB).
   // Si no se envía, el comentario se guarda como anónimo.
-  userId: z.number().int('El userId debe ser un número entero').positive('El userId debe ser positivo').optional(),
+  userId: z
+    .string()
+    .regex(/^[0-9a-fA-F]{24}$/, 'El userId debe ser un ObjectId válido')
+    .optional(),
 });

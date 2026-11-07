@@ -1,23 +1,20 @@
-import { and, count, eq } from 'drizzle-orm';
-import { db } from '../db/index.js';
-import { posts, reactions, users } from '../db/schema.js';
+import mongoose from 'mongoose';
+import { Post } from '../models/post.model.js';
+import { Reaction } from '../models/reaction.model.js';
+import { User } from '../models/user.model.js';
 
-const parseId = (value) => {
-  const id = Number(value);
-  return Number.isInteger(id) && id > 0 ? id : null;
-};
+const validId = (value) => mongoose.isValidObjectId(value);
 
 // Agrupa las reacciones de UN post por tipo.
-// countReactions(1) → { like: 3, sad: 1 }
+// countReactions('<id>') → { like: 3, sad: 1 }
 async function countReactions(postId) {
-  const rows = await db
-    .select({ type: reactions.type, total: count() })
-    .from(reactions)
-    .where(eq(reactions.postId, postId))
-    .groupBy(reactions.type);
+  const rows = await Reaction.aggregate([
+    { $match: { post: new mongoose.Types.ObjectId(postId) } },
+    { $group: { _id: '$type', total: { $sum: 1 } } },
+  ]);
 
   const counts = {};
-  for (const row of rows) counts[row.type] = row.total;
+  for (const row of rows) counts[row._id] = row.total;
   return counts;
 }
 
@@ -25,67 +22,48 @@ async function countReactions(postId) {
 // Devuelve el conteo por tipo + el detalle de cada reacción.
 // user: null → la reacción es anónima (sin iniciar sesión).
 export async function listReactions(req, res) {
-  const postId = parseId(req.params.postId);
-  if (!postId) return res.status(400).json({ error: 'ID de post inválido' });
+  const { postId } = req.params;
+  if (!validId(postId)) return res.status(400).json({ error: 'ID de post inválido' });
 
-  const [post] = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, postId));
-  if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+  if (!(await Post.exists({ _id: postId }))) {
+    return res.status(404).json({ error: 'Post no encontrado' });
+  }
 
-  const list = await db
-    .select({
-      id: reactions.id,
-      type: reactions.type,
-      createdAt: reactions.createdAt,
-      user: { id: users.id, name: users.name },
-    })
-    .from(reactions)
-    .leftJoin(users, eq(reactions.userId, users.id))
-    .where(eq(reactions.postId, postId));
+  const reactions = await Reaction.find({ post: postId })
+    .sort({ createdAt: -1 })
+    .populate('user', 'name');
 
-  res.json({
-    counts: await countReactions(postId),
-    reactions: list.map(({ user, ...reaction }) => ({
-      ...reaction,
-      user: user?.id ? user : null,
-    })),
-  });
+  res.json({ counts: await countReactions(postId), reactions });
 }
 
 // POST /api-backend/posts/:postId/reactions  (público)
-// Body: { "type": "like", "userId": 1 }   ← userId es opcional.
+// Body: { "type": "like", "userId": "<id>" }   ← userId es opcional.
 // Sin userId la reacción queda anónima. El autor SÍ puede reaccionar
 // a su propio post.
 export async function createReaction(req, res) {
-  const postId = parseId(req.params.postId);
-  if (!postId) return res.status(400).json({ error: 'ID de post inválido' });
+  const { postId } = req.params;
+  if (!validId(postId)) return res.status(400).json({ error: 'ID de post inválido' });
 
-  const [post] = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, postId));
-  if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+  if (!(await Post.exists({ _id: postId }))) {
+    return res.status(404).json({ error: 'Post no encontrado' });
+  }
 
   const { type, userId } = req.body;
 
   if (userId != null) {
-    const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId));
-    if (!user) {
+    if (!(await User.exists({ _id: userId }))) {
       return res.status(400).json({ error: 'El userId no corresponde a un usuario existente' });
     }
 
     // Un usuario registrado no puede repetir el MISMO tipo en el MISMO post
     // (pero sí puede usar tipos distintos, ej. like + sad).
-    const [existing] = await db
-      .select({ id: reactions.id })
-      .from(reactions)
-      .where(and(eq(reactions.postId, postId), eq(reactions.userId, userId), eq(reactions.type, type)));
-
-    if (existing) {
+    if (await Reaction.exists({ post: postId, user: userId, type })) {
       return res.status(409).json({ error: 'Ya reaccionaste a este post con este tipo' });
     }
   }
 
-  const [reaction] = await db
-    .insert(reactions)
-    .values({ postId, type, userId: userId ?? null })
-    .returning();
+  const reaction = await Reaction.create({ post: postId, type, user: userId ?? null });
+  await reaction.populate('user', 'name');
 
   // Devolvemos el conteo actualizado para que el frontend
   // no tenga que hacer otra petición.
@@ -94,12 +72,12 @@ export async function createReaction(req, res) {
 
 // DELETE /api-backend/reactions/:id  (público)
 export async function deleteReaction(req, res) {
-  const id = parseId(req.params.id);
-  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const { id } = req.params;
+  if (!validId(id)) return res.status(400).json({ error: 'ID inválido' });
 
-  const [reaction] = await db.select({ id: reactions.id }).from(reactions).where(eq(reactions.id, id));
+  const reaction = await Reaction.findById(id);
   if (!reaction) return res.status(404).json({ error: 'Reacción no encontrada' });
 
-  await db.delete(reactions).where(eq(reactions.id, id));
+  await reaction.deleteOne();
   res.status(204).send();
 }

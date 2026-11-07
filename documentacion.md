@@ -35,6 +35,11 @@ API lista en https://backend-react-fcsl.onrender.com/api-backend
 | `docente@cft.cl` | `11.111.111-1` | `123456` |
 | `estudiante@cft.cl` | `17.370.131-4` | `123456` |
 
+> **Sobre los IDs:** el backend usa **MongoDB**, así que todos los `id`
+> son **ObjectId**: strings de 24 caracteres hexadecimales como
+> `"507f1f77bcf86cd799439011"`. No son números — guárdalos y envíalos
+> como texto. Los ejemplos de esta guía muestran el formato real.
+
 ---
 
 ## Resumen de endpoints
@@ -46,7 +51,7 @@ API lista en https://backend-react-fcsl.onrender.com/api-backend
 | POST | `/auth/login` | No | Iniciar sesión y obtener token |
 | GET | `/auth/me` | Sí | Datos del usuario autenticado |
 | GET | `/posts` | No | Listar todos los posts |
-| GET | `/posts/:id` | No | Obtener un post por ID |
+| GET | `/posts/:id` | No | Post completo: autor, conteos, comentarios y reacciones |
 | POST | `/posts` | Sí | Crear un post |
 | PUT | `/posts/:id` | Sí | Editar un post (solo el autor) |
 | DELETE | `/posts/:id` | Sí | Eliminar un post (solo el autor) |
@@ -56,6 +61,9 @@ API lista en https://backend-react-fcsl.onrender.com/api-backend
 | GET | `/posts/:postId/comments` | No | Ver comentarios de un post |
 | POST | `/posts/:postId/comments` | No | Comentar un post |
 | DELETE | `/comments/:id` | No | Eliminar un comentario |
+| GET | `/comments/:commentId/reactions` | No | Ver reacciones de un comentario |
+| POST | `/comments/:commentId/reactions` | No | Reaccionar a un comentario |
+| DELETE | `/comment-reactions/:id` | No | Quitar una reacción de un comentario |
 | GET | `/users` | No | Listar usuarios |
 | GET | `/users/:id` | No | Usuario con sus posts |
 
@@ -103,7 +111,7 @@ Crea un usuario nuevo y devuelve el token (queda logueado de inmediato).
 ```json
 {
   "user": {
-    "id": 3,
+    "id": "674f2a9c1e5b8d0f3a4b5c6d",
     "name": "Ana",
     "lastName": "Pérez",
     "rut": "20.123.456-5",
@@ -140,7 +148,7 @@ Inicia sesión y devuelve el token. **No requiere token.**
 ```json
 {
   "user": {
-    "id": 1,
+    "id": "507f1f77bcf86cd799439011",
     "name": "Docente",
     "lastName": "Demo",
     "rut": "11.111.111-1",
@@ -169,7 +177,7 @@ Devuelve los datos del usuario dueño del token. **Requiere token.**
 ```json
 {
   "user": {
-    "id": 1,
+    "id": "507f1f77bcf86cd799439011",
     "name": "Docente",
     "lastName": "Demo",
     "rut": "11.111.111-1",
@@ -195,11 +203,11 @@ Lista todos los posts con los datos públicos de su autor. **No requiere token.*
 {
   "posts": [
     {
-      "id": 1,
+      "id": "507f191e810c19729de860ea",
       "title": "Primer post de Docente",
       "content": "Este es un post de ejemplo creado por el seed.",
       "createdAt": "2026-10-28T03:15:59.622Z",
-      "author": { "id": 1, "name": "Docente" },
+      "author": { "id": "507f1f77bcf86cd799439011", "name": "Docente" },
       "reactions": { "like": 2, "love": 1 },
       "commentsCount": 3
     }
@@ -212,13 +220,52 @@ Lista todos los posts con los datos públicos de su autor. **No requiere token.*
 
 ### GET `/posts/:id`
 
-Obtiene un post por su ID. **No requiere token.**
+Obtiene un post por su ID **con todo incluido**: autor, conteos, el detalle
+de comentarios y el detalle de reacciones. **No requiere token.**
 
-Ejemplo: `GET http://localhost:3000/api-backend/posts/1`
+Ejemplo: `GET http://localhost:3000/api-backend/posts/507f191e810c19729de860ea`
 
-**Respuesta `200 OK`:** igual que un elemento del listado, envuelto en `{ "post": {...} }`.
+**Respuesta `200 OK`:**
 
-**Errores posibles:** 400 si el ID no es numérico, 404 si no existe.
+```json
+{
+  "post": {
+    "id": "507f191e810c19729de860ea",
+    "title": "Primer post de Docente",
+    "content": "Este es un post de ejemplo creado por el seed.",
+    "createdAt": "2026-10-28T03:15:59.622Z",
+    "author": { "id": "507f1f77bcf86cd799439011", "name": "Docente" },
+    "reactions": { "like": 1, "love": 1, "wow": 1 },
+    "commentsCount": 2,
+    "comments": [
+      {
+        "id": "507f191e810c19729de860ec",
+        "post": "507f191e810c19729de860ea",
+        "content": "¡Buen post!",
+        "author": { "id": "507f1f77bcf86cd799439011", "name": "Docente" },
+        "createdAt": "2026-11-07T01:03:42.361Z",
+        "reactions": { "like": 1, "love": 1 }
+      }
+    ],
+    "reactionsDetail": [
+      {
+        "id": "507f191e810c19729de860eb",
+        "post": "507f191e810c19729de860ea",
+        "type": "like",
+        "user": { "id": "507f1f77bcf86cd799439011", "name": "Docente" },
+        "createdAt": "2026-11-07T01:03:42.355Z"
+      }
+    ]
+  }
+}
+```
+
+> Ideal para la vista de "detalle de publicación": con **una sola petición**
+> tienes el post, sus contadores, todos los comentarios y todas las
+> reacciones. Los endpoints `/posts/:postId/comments` y
+> `/posts/:postId/reactions` siguen existiendo si solo necesitas una parte.
+
+**Errores posibles:** 400 si el ID no es válido, 404 si no existe.
 
 ### POST `/posts`
 
@@ -240,10 +287,10 @@ Crea un post. El autor se toma del token (no se envía en el body). **Requiere t
 ```json
 {
   "post": {
-    "id": 5,
+    "id": "674f2a9c1e5b8d0f3a4b5c6e",
     "title": "Mi primer post",
     "content": "Contenido del post...",
-    "authorId": 1,
+    "author": { "id": "507f1f77bcf86cd799439011", "name": "Docente" },
     "createdAt": "2026-10-28T03:40:00.000Z"
   }
 }
@@ -326,13 +373,13 @@ Devuelve el conteo por tipo y el detalle de cada reacción. **No requiere token.
   "counts": { "like": 2, "love": 1, "wow": 1 },
   "reactions": [
     {
-      "id": 1,
+      "id": "507f191e810c19729de860eb",
       "type": "like",
       "createdAt": "2026-11-07T01:03:42.355Z",
-      "user": { "id": 1, "name": "Docente" }
+      "user": { "id": "507f1f77bcf86cd799439011", "name": "Docente" }
     },
     {
-      "id": 2,
+      "id": "507f191e810c19729de860ec",
       "type": "love",
       "createdAt": "2026-11-07T01:03:42.355Z",
       "user": null
@@ -347,7 +394,7 @@ Devuelve el conteo por tipo y el detalle de cada reacción. **No requiere token.
 > Para pintar solo los contadores usa `counts`. El detalle sirve si quieres
 > mostrar quién reaccionó.
 
-**Errores posibles:** 400 si el ID no es numérico, 404 si el post no existe.
+**Errores posibles:** 400 si el ID no es válido, 404 si el post no existe.
 
 ### POST `/posts/:postId/reactions`
 
@@ -358,7 +405,7 @@ Crea una reacción. **No requiere token.**
 ```json
 {
   "type": "like",
-  "userId": 1
+  "userId": "507f1f77bcf86cd799439011"
 }
 ```
 
@@ -371,10 +418,10 @@ Crea una reacción. **No requiere token.**
 ```json
 {
   "reaction": {
-    "id": 8,
-    "postId": 1,
+    "id": "674f2a9c1e5b8d0f3a4b5c6f",
+    "post": "507f191e810c19729de860ea",
     "type": "love",
-    "userId": 1,
+    "user": { "id": "507f1f77bcf86cd799439011", "name": "Docente" },
     "createdAt": "2026-11-07T01:07:08.217Z"
   },
   "counts": { "like": 2, "love": 2, "wow": 1 }
@@ -400,7 +447,7 @@ Quita una reacción por su `id`. **No requiere token.**
 
 **Respuesta:** `204 No Content` (sin body).
 
-**Errores posibles:** 400 si el ID no es numérico, 404 si no existe.
+**Errores posibles:** 400 si el ID no es válido, 404 si no existe.
 
 > Por ahora cualquiera puede eliminar cualquier reacción. Cuando se agregue
 > el uso de token, este endpoint se restringirá al dueño de la reacción.
@@ -422,16 +469,20 @@ Lista los comentarios del post. **No requiere token.**
 {
   "comments": [
     {
-      "id": 1,
+      "id": "507f191e810c19729de860ec",
+      "post": "507f191e810c19729de860ea",
       "content": "¡Buen post!",
       "createdAt": "2026-11-07T01:03:42.361Z",
-      "author": { "id": 1, "name": "Docente" }
+      "author": { "id": "507f1f77bcf86cd799439011", "name": "Docente" },
+      "reactions": { "like": 1, "love": 1 }
     },
     {
-      "id": 2,
+      "id": "507f191e810c19729de860ed",
+      "post": "507f191e810c19729de860ea",
       "content": "Comentario dejado por alguien anónimo.",
       "createdAt": "2026-11-07T01:03:42.361Z",
-      "author": null
+      "author": null,
+      "reactions": {}
     }
   ]
 }
@@ -439,8 +490,11 @@ Lista los comentarios del post. **No requiere token.**
 
 > `author: null` → comentario **anónimo**. En tu interfaz muestra
 > "Anónimo" cuando `author` sea `null`.
+>
+> Cada comentario trae `reactions` con el **conteo por tipo** de las
+> reacciones que ha recibido (ver [Reacciones a comentarios](#reacciones-a-comentarios)).
 
-**Errores posibles:** 400 si el ID no es numérico, 404 si el post no existe.
+**Errores posibles:** 400 si el ID no es válido, 404 si el post no existe.
 
 ### POST `/posts/:postId/comments`
 
@@ -451,7 +505,7 @@ Crea un comentario. **No requiere token.**
 ```json
 {
   "content": "Mi comentario",
-  "userId": 1
+  "userId": "507f1f77bcf86cd799439011"
 }
 ```
 
@@ -463,10 +517,11 @@ Crea un comentario. **No requiere token.**
 ```json
 {
   "comment": {
-    "id": 5,
+    "id": "674f2a9c1e5b8d0f3a4b5c70",
+    "post": "507f191e810c19729de860ea",
     "content": "Mi comentario",
     "createdAt": "2026-11-07T01:09:59.773Z",
-    "author": { "id": 1, "name": "Docente" }
+    "author": { "id": "507f1f77bcf86cd799439011", "name": "Docente" }
   }
 }
 ```
@@ -485,10 +540,75 @@ Elimina un comentario por su `id`. **No requiere token.**
 
 **Respuesta:** `204 No Content` (sin body).
 
-**Errores posibles:** 400 si el ID no es numérico, 404 si no existe.
+**Errores posibles:** 400 si el ID no es válido, 404 si no existe.
 
 > Al igual que las reacciones, por ahora cualquiera puede eliminar
 > comentarios. Se restringirá al agregar autenticación con token.
+>
+> Al borrar un comentario también se eliminan **sus reacciones**.
+
+---
+
+## Reacciones a comentarios
+
+Los comentarios también aceptan reacciones, con **las mismas reglas** que
+las reacciones a posts: son públicas, aceptan los mismos
+[tipos](#tipos-de-reacción-disponibles), `"userId"` es opcional (sin él la
+reacción queda **anónima**) y un usuario registrado no puede repetir el
+mismo tipo en el mismo comentario (`409`).
+
+### GET `/comments/:commentId/reactions`
+
+Devuelve el conteo por tipo y el detalle. **No requiere token.**
+
+**Respuesta `200 OK`:** misma forma que las reacciones de post
+(`{ "counts": {...}, "reactions": [...] }`), donde cada reacción trae
+`comment` (id del comentario) en vez de `post`.
+
+### POST `/comments/:commentId/reactions`
+
+Crea una reacción a un comentario. **No requiere token.**
+
+**Body:**
+
+```json
+{
+  "type": "like",
+  "userId": "507f1f77bcf86cd799439011"
+}
+```
+
+**Respuesta `201 Created`:**
+
+```json
+{
+  "reaction": {
+    "id": "674f2a9c1e5b8d0f3a4b5c71",
+    "comment": "507f191e810c19729de860ec",
+    "type": "like",
+    "user": { "id": "507f1f77bcf86cd799439011", "name": "Docente" },
+    "createdAt": "2026-11-07T04:20:00.000Z"
+  },
+  "counts": { "like": 1 }
+}
+```
+
+**Errores posibles:**
+
+| Código | Caso | Respuesta |
+| --- | --- | --- |
+| 400 | `type` o `userId` inválido | `{"error": "campo: mensaje", "details": [...]}` |
+| 400 | `userId` no existe | `{"error": "El userId no corresponde a un usuario existente"}` |
+| 404 | El comentario no existe | `{"error": "Comentario no encontrado"}` |
+| 409 | Mismo usuario + mismo tipo | `{"error": "Ya reaccionaste a este comentario con este tipo"}` |
+
+### DELETE `/comment-reactions/:id`
+
+Quita una reacción a comentario por su `id`. **No requiere token.**
+
+**Respuesta:** `204 No Content` (sin body).
+
+**Errores posibles:** 400 si el ID no es válido, 404 si no existe.
 
 ---
 
@@ -504,7 +624,7 @@ Lista todos los usuarios. **No requiere token.**
 {
   "users": [
     {
-      "id": 1,
+      "id": "507f1f77bcf86cd799439011",
       "name": "Docente",
       "lastName": "Demo",
       "rut": "11.111.111-1",
@@ -524,14 +644,14 @@ Obtiene un usuario con sus posts. **No requiere token.**
 ```json
 {
   "user": {
-    "id": 1,
+    "id": "507f1f77bcf86cd799439011",
     "name": "Docente",
     "lastName": "Demo",
     "rut": "11.111.111-1",
     "email": "docente@cft.cl",
     "createdAt": "2026-10-28T03:15:59.615Z",
     "posts": [
-      { "id": 1, "title": "Primer post...", "content": "...", "createdAt": "..." }
+      { "id": "507f191e810c19729de860ea", "title": "Primer post...", "content": "...", "createdAt": "..." }
     ]
   }
 }
@@ -622,7 +742,7 @@ console.log(posts);
 // Usuario logueado: guarda su id al hacer login (login.user.id)
 const userId = JSON.parse(localStorage.getItem('user'))?.id;
 
-const res = await fetch(`${API}/posts/1/reactions`, {
+const res = await fetch(`${API}/posts/507f191e810c19729de860ea/reactions`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ type: 'like', userId }), // userId: undefined → anónimo
@@ -636,7 +756,7 @@ await fetch(`${API}/reactions/${reaction.id}`, { method: 'DELETE' });
 ### Comentar un post
 
 ```js
-const res = await fetch(`${API}/posts/1/comments`, {
+const res = await fetch(`${API}/posts/507f191e810c19729de860ea/comments`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ content: 'Mi comentario', userId }),

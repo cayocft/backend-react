@@ -1,13 +1,11 @@
 import bcrypt from 'bcryptjs';
-import { eq } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import { config } from '../config.js';
-import { db } from '../db/index.js';
-import { users } from '../db/schema.js';
+import { User } from '../models/user.model.js';
 
-// Quita campos sensibles antes de responder al cliente.
-// NUNCA devuelvas el passwordHash en una respuesta.
-const toPublicUser = ({ passwordHash, ...user }) => user;
+// Nota: nunca devolvemos passwordHash. El transform toJSON del
+// modelo User lo elimina automáticamente al serializar.
 
 const signToken = (user) =>
   jwt.sign({ sub: user.id, email: user.email }, config.jwtSecret, {
@@ -18,30 +16,24 @@ const signToken = (user) =>
 export async function register(req, res) {
   const { name, lastName, rut, email, password } = req.body;
 
-  const [existingEmail] = await db.select().from(users).where(eq(users.email, email));
-  if (existingEmail) {
+  if (await User.exists({ email })) {
     return res.status(409).json({ error: 'El email ya está registrado' });
   }
-
-  const [existingRut] = await db.select().from(users).where(eq(users.rut, rut));
-  if (existingRut) {
+  if (await User.exists({ rut })) {
     return res.status(409).json({ error: 'El RUT ya está registrado' });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const [user] = await db
-    .insert(users)
-    .values({ name, lastName, rut, email, passwordHash })
-    .returning();
+  const user = await User.create({ name, lastName, rut, email, passwordHash });
 
-  res.status(201).json({ user: toPublicUser(user), token: signToken(user) });
+  res.status(201).json({ user, token: signToken(user) });
 }
 
 // POST /api-backend/auth/login
 export async function login(req, res) {
   const { email, password } = req.body;
 
-  const [user] = await db.select().from(users).where(eq(users.email, email));
+  const user = await User.findOne({ email });
   const passwordOk = user && (await bcrypt.compare(password, user.passwordHash));
 
   // Mismo mensaje para "no existe" y "contraseña mala":
@@ -50,16 +42,22 @@ export async function login(req, res) {
     return res.status(401).json({ error: 'Credenciales inválidas' });
   }
 
-  res.json({ user: toPublicUser(user), token: signToken(user) });
+  res.json({ user, token: signToken(user) });
 }
 
 // GET /api-backend/auth/me  (requiere token)
 export async function me(req, res) {
-  const [user] = await db.select().from(users).where(eq(users.id, req.user.sub));
+  // Un token válido pero con un sub que no es ObjectId (ej. emitido
+  // cuando la DB usaba ids numéricos) se trata como token inválido.
+  if (!mongoose.isValidObjectId(req.user.sub)) {
+    return res.status(401).json({ error: 'Token inválido: vuelve a iniciar sesión' });
+  }
+
+  const user = await User.findById(req.user.sub);
 
   if (!user) {
     return res.status(404).json({ error: 'Usuario no encontrado' });
   }
 
-  res.json({ user: toPublicUser(user) });
+  res.json({ user });
 }

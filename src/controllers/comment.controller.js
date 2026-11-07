@@ -1,80 +1,67 @@
-import { eq } from 'drizzle-orm';
-import { db } from '../db/index.js';
-import { comments, posts, users } from '../db/schema.js';
+import mongoose from 'mongoose';
+import { Comment } from '../models/comment.model.js';
+import { CommentReaction } from '../models/commentReaction.model.js';
+import { Post } from '../models/post.model.js';
+import { User } from '../models/user.model.js';
+import { attachReactionCounts } from './commentReaction.controller.js';
 
-const parseId = (value) => {
-  const id = Number(value);
-  return Number.isInteger(id) && id > 0 ? id : null;
-};
-
-// Consulta base: comentarios con los datos públicos de su autor (JOIN).
-const commentWithAuthor = () =>
-  db
-    .select({
-      id: comments.id,
-      content: comments.content,
-      createdAt: comments.createdAt,
-      author: { id: users.id, name: users.name },
-    })
-    .from(comments)
-    .leftJoin(users, eq(comments.userId, users.id));
-
-// author: null → el comentario es anónimo (sin iniciar sesión)
-const withAnonymousAuthor = ({ author, ...comment }) => ({
-  ...comment,
-  author: author?.id ? author : null,
-});
+const validId = (value) => mongoose.isValidObjectId(value);
 
 // GET /api-backend/posts/:postId/comments  (público)
+// author: null → el comentario es anónimo (sin iniciar sesión)
 export async function listComments(req, res) {
-  const postId = parseId(req.params.postId);
-  if (!postId) return res.status(400).json({ error: 'ID de post inválido' });
+  const { postId } = req.params;
+  if (!validId(postId)) return res.status(400).json({ error: 'ID de post inválido' });
 
-  const [post] = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, postId));
-  if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+  if (!(await Post.exists({ _id: postId }))) {
+    return res.status(404).json({ error: 'Post no encontrado' });
+  }
 
-  const list = await commentWithAuthor().where(eq(comments.postId, postId));
-  res.json({ comments: list.map(withAnonymousAuthor) });
+  const comments = await Comment.find({ post: postId })
+    .sort({ createdAt: -1 })
+    .populate('author', 'name');
+  res.json({ comments: await attachReactionCounts(comments) });
 }
 
 // POST /api-backend/posts/:postId/comments  (público)
-// Body: { "content": "Mi comentario", "userId": 1 }   ← userId es opcional.
+// Body: { "content": "Mi comentario", "userId": "<id>" }   ← userId es opcional.
 // Sin userId el comentario queda anónimo (author: null).
 export async function createComment(req, res) {
-  const postId = parseId(req.params.postId);
-  if (!postId) return res.status(400).json({ error: 'ID de post inválido' });
+  const { postId } = req.params;
+  if (!validId(postId)) return res.status(400).json({ error: 'ID de post inválido' });
 
-  const [post] = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, postId));
-  if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+  if (!(await Post.exists({ _id: postId }))) {
+    return res.status(404).json({ error: 'Post no encontrado' });
+  }
 
   const { content, userId } = req.body;
 
-  if (userId != null) {
-    const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId));
-    if (!user) {
-      return res.status(400).json({ error: 'El userId no corresponde a un usuario existente' });
-    }
+  if (userId != null && !(await User.exists({ _id: userId }))) {
+    return res.status(400).json({ error: 'El userId no corresponde a un usuario existente' });
   }
 
-  const [comment] = await db
-    .insert(comments)
-    .values({ postId, content, userId: userId ?? null })
-    .returning();
+  const comment = await Comment.create({
+    post: postId,
+    content,
+    author: userId ?? null,
+  });
+  await comment.populate('author', 'name');
 
-  // Volvemos a leerlo con el JOIN para devolverlo con su author
-  // (o author: null si es anónimo), igual que en el listado.
-  const [created] = await commentWithAuthor().where(eq(comments.id, comment.id));
-  res.status(201).json({ comment: withAnonymousAuthor(created) });
+  res.status(201).json({ comment });
 }
 
 // DELETE /api-backend/comments/:id  (público)
 export async function deleteComment(req, res) {
-  const id = parseId(req.params.id);
-  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const { id } = req.params;
+  if (!validId(id)) return res.status(400).json({ error: 'ID inválido' });
 
-  const [comment] = await db.select({ id: comments.id }).from(comments).where(eq(comments.id, id));
+  const comment = await Comment.findById(id);
   if (!comment) return res.status(404).json({ error: 'Comentario no encontrado' });
 
-  await db.delete(comments).where(eq(comments.id, id));
+  await comment.deleteOne();
+
+  // MongoDB no tiene ON DELETE CASCADE: borrar las reacciones del comentario
+  await CommentReaction.deleteMany({ comment: id });
+
   res.status(204).send();
 }

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authRouter } from './auth.routes.js';
+import { commentReactionRouter } from './commentReaction.routes.js';
 import { commentRouter } from './comment.routes.js';
 import { postRouter } from './post.routes.js';
 import { reactionRouter } from './reaction.routes.js';
@@ -15,3 +16,4 @@ router.use('/users', userRouter);
 router.use('/posts', postRouter);
 router.use('/reactions', reactionRouter);
 router.use('/comments', commentRouter);
+router.use('/comment-reactions', commentReactionRouter);

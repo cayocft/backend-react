@@ -7,5 +7,5 @@ export const config = {
   apiPrefix: process.env.API_PREFIX || '/api-backend',
   jwtSecret: process.env.JWT_SECRET || 'secreto-inseguro-solo-desarrollo',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',
-  dbUrl: process.env.DB_URL || 'file:./data/dev.db',
+  mongoUri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/backend-cft',
 };
